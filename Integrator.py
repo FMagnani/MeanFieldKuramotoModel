@@ -22,14 +22,16 @@ class Integrator():
             raise ValueError("init_distribution and frequencies should have same length")
         
         self.phi = np.array(init_distribution)
-        self.w = np.array(frequencies)
+        self.freqs = np.array(frequencies)
         self.T = temperature
         self.k = coupling
         self.coherence, self.psi = self.get_orderPars()
         
         self.scheme_dict = {
-                            'euler': self.Euler
+                            'euler': self.Euler,
+                            'heun' : self.Heun
                             }
+        
         
     def get_orderPars(self):
         """
@@ -65,7 +67,6 @@ class Integrator():
             One of: 
                 'euler'
                 'heun'
-                'taylor' (Taylor 3/2 is used)
         seed : int
             Seed for generation of random numbers for the Wiener process.
 
@@ -87,7 +88,7 @@ class Integrator():
         # The square brackets inside are needed
         phi_history = np.array([self.phi])
          
-        for i in range(iterations):
+        for i in range(iterations-2):
             
             self.phi = scheme(Dt, seed)
             
@@ -98,15 +99,19 @@ class Integrator():
             coherence_history = np.append(coherence_history, r)
             psi_history = np.append(psi_history, psi)
             
+        phi_history = np.mod(phi_history, 2*np.pi)
+        coherence_history = np.mod(coherence_history, 2*np.pi)
+        psi_history = np.mod(psi_history, 2*np.pi)
+        
         return phi_history, coherence_history, psi_history
 
     
     # NUMERICAL SCHEMES
     
-    def Euler(self, Dt, seed):
-    
+    def speed(self, phi):
+        
         # Compute all combinations between phi's entries
-        xx, yy = np.meshgrid(self.phi,self.phi)        
+        xx, yy = np.meshgrid(phi,phi)        
     
         # Apply all pairwise differences in parallel
         distances = xx - yy
@@ -117,56 +122,82 @@ class Integrator():
         # Forcing term
         forcings = self.k*np.mean(sines, axis=1)
     
+        return self.freqs + forcings
+
+    
+    def Euler(self, Dt, seed):
+    
         # Noise
         np.random.seed(seed)
         noise = self.T*np.random.normal(0,np.sqrt(Dt),len(self.phi))
     
-        new_phi = self.phi + Dt*(freqs + forcings + noise)
+        speed = self.speed(self.phi)
     
-        # New phi modulo 2pi
-        new_phi = np.mod(new_phi, 2*np.pi)
-    
+        new_phi = self.phi + Dt*speed + noise
+        
         return new_phi
 
 
+    def Heun(self, Dt, seed):
+        
+        middle_pnt = self.Euler(Dt, seed)
+        
+        # Deterministic part
+        deterministic_part = (self.speed(self.phi) + self.speed(middle_pnt))*.5
 
+        # Noise
+        np.random.seed(seed)
+        noise = self.T*np.random.normal(0,np.sqrt(Dt),len(self.phi))
+        
+        new_phi = self.phi + Dt*deterministic_part + noise
+        
+        return new_phi
+        
 
 #%%
 
 # Script example
 
-N = 2
+# Number of oscillators
+N = 10
 
 np.random.seed(123)
 
-freqs = np.random.normal(0,1,N)
+# Initial phases distribution
+# init_phi_distr = np.arange(0,1,1/N) # Uniform
+# init_phi = np.multiply(init_phi_distr, 2*np.pi)
 
+init_phi = np.random.normal(np.pi, 1, N)
 
-init_phi_distr = np.arange(0,1,1/N) # Uniform
-init_phi = np.multiply(init_phi_distr, 2*np.pi)
+# Natural frequencies distribution
+freqs = np.random.normal(10,1,N)
 
-freqs = np.random.normal(0,1,N)
-
-K = 1
+# System parameters
+K = 10
 T = 0
 
+system = Integrator(init_phi, freqs, K, T)
+
+
+iterations = 2000
+
 # Instead of Dt itself the resolution with wich to integrate one period is chosen
-time_resolution = 100 # Number of steps used to integrate over a period
+time_resolution = 80 # Number of steps used to integrate over a period
 average_freq = np.abs(freqs.mean())
 Dt = 1/(time_resolution*average_freq)
 
-# Instead of the number of iterations, the number of periods can be chosen, 
-# with the slowest oscillator as a reference. 
-period_iterations = 6
-min_freq = np.min(np.abs(freqs))
-iterations = int(period_iterations/(Dt*min_freq))
+phi, r, psi = system.integrate(Dt, iterations, 'heun', 123)
+# plt.plot(phi, 'r+')
+# plt.plot(psi, 'k+')
+# plt.plot(r, 'b')
 
-system = Integrator(init_phi, freqs, K, T)
-phi, r, psi = system.integrate(Dt, iterations, 'euler', 123)
-plt.plot(phi, 'r')
-# plt.plot(r, 'k')
+#%%
 
+fig = plt.figure()
+ax = fig.add_subplot(projection='polar')
 
+#ax.plot(phi[:,0], speed[:,0], 'r')
+#ax.plot(phi[:,1], speed[:,1], 'b')
+#ax.plot(phi[:,9], speed[:,9], 'k')
 
-
-
+ax.plot(psi, r, 'r')
