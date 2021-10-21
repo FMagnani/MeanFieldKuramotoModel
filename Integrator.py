@@ -88,9 +88,14 @@ class Integrator():
         # The square brackets inside are needed
         phi_history = np.array([self.phi])
          
-        for i in range(iterations-2):
+        # All the Wiener process is created
+        wiener = np.random.normal(0, np.sqrt(Dt), iterations)
+        
+        for i in range(iterations):
             
-            self.phi = scheme(Dt, seed)
+            noise = wiener[i]
+            
+            self.phi = scheme(Dt, noise)
             
             # Pay attention to the following AWFUL syntax. It's not obvious.
             phi_history = np.append(phi_history, [self.phi], axis=0)
@@ -118,80 +123,124 @@ class Integrator():
     
         # Apply sine to all the differences in parallel
         sines = np.sin(distances)
-    
+                
         # Forcing term
         forcings = self.k*np.mean(sines, axis=1)
     
         return self.freqs + forcings
 
     
-    def Euler(self, Dt, seed):
-    
-        # Noise
-        np.random.seed(seed)
-        noise = self.T*np.random.normal(0,np.sqrt(Dt),len(self.phi))
+    def Euler(self, Dt, noise):
     
         speed = self.speed(self.phi)
     
-        new_phi = self.phi + Dt*speed + noise
+        new_phi = self.phi + Dt*speed + self.T*noise
         
         return new_phi
 
 
-    def Heun(self, Dt, seed):
+    def Heun(self, Dt, noise):
         
-        middle_pnt = self.Euler(Dt, seed)
+        middle_pnt = self.Euler(Dt, noise)
         
         # Deterministic part
         deterministic_part = (self.speed(self.phi) + self.speed(middle_pnt))*.5
 
-        # Noise
-        np.random.seed(seed)
-        noise = self.T*np.random.normal(0,np.sqrt(Dt),len(self.phi))
-        
-        new_phi = self.phi + Dt*deterministic_part + noise
+        new_phi = self.phi + Dt*deterministic_part + self.T*noise
         
         return new_phi
         
 
 #%%
 
-# Script example
+# SCRIPT EXAMPLE
 
 # Number of oscillators
-N = 10
+N = 100
 
 np.random.seed(123)
 
 # Initial phases distribution
-# init_phi_distr = np.arange(0,1,1/N) # Uniform
+# Uniform
+# init_phi_distr = np.arange(0,1,1/N)
 # init_phi = np.multiply(init_phi_distr, 2*np.pi)
-
+# Gaussian around pi
 init_phi = np.random.normal(np.pi, 1, N)
 
 # Natural frequencies distribution
-freqs = np.random.normal(10,1,N)
+# Gaussian
+freqs = np.random.normal(20,1,N)
+# Specific for N=2
+#freqs = np.array([-1,1])
 
-# System parameters
+# Coupling and Temperature parameters
 K = 10
 T = 0
 
+# System initialization
 system = Integrator(init_phi, freqs, K, T)
 
+# INTEGRATION
 
-iterations = 2000
+iterations = 1000
 
 # Instead of Dt itself the resolution with wich to integrate one period is chosen
-time_resolution = 80 # Number of steps used to integrate over a period
-average_freq = np.abs(freqs.mean())
-Dt = 1/(time_resolution*average_freq)
+# The smaller period is taken as a reference
+time_resolution = 100 # Number of steps used to integrate over a period
+higher_freq = np.abs(freqs.max())
+Dt = 1/(time_resolution*higher_freq)
 
-phi, r, psi = system.integrate(Dt, iterations, 'heun', 123)
-# plt.plot(phi, 'r+')
-# plt.plot(psi, 'k+')
+phi, r, psi = system.integrate(Dt, iterations, 'heun', 7264)
+
+plt.plot(phi, 'r.')
+# plt.plot(psi, 'k.')
 # plt.plot(r, 'b')
+# plt.show()
 
 #%%
+
+# BIFURCATION COMPUTATION
+
+# Instead of Dt itself the resolution with wich to integrate one period is chosen
+# The smaller period is taken as a reference
+time_resolution = 100 # Number of steps used to integrate over a period
+higher_freq = np.abs(freqs.max())
+Dt = 1/(time_resolution*higher_freq)
+
+for (T, color) in zip([0,0.1,0.2,0.5],['k','b','g','r']):
+    
+    rk_relation = np.array([[0,0]])
+    
+    for k in np.arange(0,12, 0.4):
+    
+        system = Integrator(init_phi, freqs, k, T)
+
+        iterations = 400
+
+        _, r, _ = system.integrate(Dt, iterations, 'heun', 7264)
+    
+        rk_relation = np.append(rk_relation, [[k,np.mean(r[-50:])]], axis=0)
+
+    rk_relation = rk_relation[1:,:]
+
+    plt.plot(rk_relation[:,0], rk_relation[:,1], '-', color=color, marker='*')
+
+plt.show()
+
+#%%
+
+# BIFURCATION PLOT
+
+color='k'
+
+plt.plot(rk_relation[:,0], rk_relation[:,1], '-', color=color, marker='*')
+
+plt.show()
+
+
+#%%
+
+# POLAR PLOT
 
 fig = plt.figure()
 ax = fig.add_subplot(projection='polar')
@@ -201,3 +250,37 @@ ax = fig.add_subplot(projection='polar')
 #ax.plot(phi[:,9], speed[:,9], 'k')
 
 ax.plot(psi, r, 'r')
+
+#%%
+
+# ANIMATION - test
+
+from matplotlib import animation
+
+fig = plt.figure()
+ax = plt.axes()
+ax.get_xaxis().set_ticks([])
+ax.get_yaxis().set_ticks([])
+
+im=plt.imshow(phi[0,:].reshape(10,10),interpolation='none')
+
+def animate(i):
+    
+    im.set_array(phi[i,:].reshape(10,10))
+    
+    return [im]
+
+anim = animation.FuncAnimation(fig, animate,
+                               frames=iterations, interval=10, blit=True)
+
+anim.save("name.gif", fps=30)
+
+
+
+
+
+
+
+
+
+
