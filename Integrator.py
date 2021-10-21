@@ -147,20 +147,24 @@ init_phi = np.multiply(init_phi_distr, 2*np.pi)
 
 freqs = np.random.normal(0,1,N)
 
-for i in range(21)[18:]:
+K = 1
+T = 0
 
-    K = 2.2
-    T = i
-    system = Integrator(init_phi, freqs, K, T)
-    phi, r, psi = system.integrate(0.01, 1000, 'euler', 123)
-    plt.plot(phi)
-    # plt.plot(r, 'k')
+# Instead of Dt itself the resolution with wich to integrate one period is chosen
+time_resolution = 100 # Number of steps used to integrate over a period
+average_freq = np.abs(freqs.mean())
+Dt = 1/(time_resolution*average_freq)
 
+# Instead of the number of iterations, the number of periods can be chosen, 
+# with the slowest oscillator as a reference. 
+period_iterations = 6
+min_freq = np.min(np.abs(freqs))
+iterations = int(period_iterations/(Dt*min_freq))
 
-# system = Integrator(2, [0,1], [1,2], 3)
-# phi, r, psi = system.integrate(0.01, 1000, EulerKuramoto)
-#plt.plot(phi)
-#plt.plot(r, 'k')
+system = Integrator(init_phi, freqs, K, T)
+phi, r, psi = system.integrate(Dt, iterations, 'euler', 123)
+plt.plot(phi, 'r')
+# plt.plot(r, 'k')
 
 
 
