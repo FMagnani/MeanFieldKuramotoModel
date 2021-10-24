@@ -12,7 +12,6 @@ import matplotlib.pyplot as plt
 
 #%%
 
-# Made in general reference frame -> d/dt (Mean phase) is not 0
 class Integrator():
     
     def __init__(self, init_distribution, frequencies, coupling, temperature):
@@ -79,7 +78,7 @@ class Integrator():
         psi_history : np.array with shape (len(phi))
             The mean phase at each iteration.
         """
-        
+                
         scheme = self.scheme_dict[numerical_scheme]
         
         coherence_history = np.array([self.coherence])
@@ -88,12 +87,13 @@ class Integrator():
         # The square brackets inside are needed
         phi_history = np.array([self.phi])
          
-        # All the Wiener process is created
-        wiener = np.random.normal(0, np.sqrt(Dt), iterations)
+        # For each oscillator, the whole Wiener process must be created
+        # In total, we have N random walks each with length = "iterations" 
+        wiener = np.random.normal(0, np.sqrt(Dt), (N,iterations))
         
         for i in range(iterations):
             
-            noise = wiener[i]
+            noise = wiener[:, i]
             
             self.phi = scheme(Dt, noise)
             
@@ -103,7 +103,20 @@ class Integrator():
             r, psi = self.get_orderPars()
             coherence_history = np.append(coherence_history, r)
             psi_history = np.append(psi_history, psi)
-            
+      
+         # TODO
+         # Understand the effects of 2pi modulation. I think it's different
+         # for example think to a very fast oscillator and a very slow.
+         # Without modulation, these two particles can get further and further
+         # away, one from the other. With modulation, they can be at most 
+         # far by pi. Do this affects the sinusoidal forcing between them?
+         # Or maybe not since the sinusoid is inherently periodic in 2pi?
+         #
+         # This affects also the "speed" method that computes the distances. 
+         # Correct it if needed.
+         
+         # A quick test showed that it doesn't affect r actually
+         
         phi_history = np.mod(phi_history, 2*np.pi)
         coherence_history = np.mod(coherence_history, 2*np.pi)
         psi_history = np.mod(psi_history, 2*np.pi)
@@ -150,56 +163,72 @@ class Integrator():
         
         return new_phi
         
+    ## TODO
+    ## Taylor method pls
+    ## I think that's a very noice integrator, this means less iterations.
+    ## Less iterations means less time. Or equal iteration but with no
+    ## fear to be wrong and have to re-do all from the start.
+    ##
+    
 
 #%%
 
-# SCRIPT EXAMPLE
+### SCRIPT EXAMPLE
 
-# Number of oscillators
-N = 100
+## Number of oscillators
+N = 2
 
+## Random seed (for the Wiener processes) 
 np.random.seed(123)
 
-# Initial phases distribution
-# Uniform
-# init_phi_distr = np.arange(0,1,1/N)
-# init_phi = np.multiply(init_phi_distr, 2*np.pi)
-# Gaussian around pi
-init_phi = np.random.normal(np.pi, 1, N)
+## Initial phases distribution
+# init_phi = np.arange(0,2*np.pi,1/N) # Uniform
+init_phi = np.random.normal(np.pi, 1, N) # Gaussian around pi
 
-# Natural frequencies distribution
-# Gaussian
-freqs = np.random.normal(20,1,N)
-# Specific for N=2
-#freqs = np.array([-1,1])
+## Natural frequencies distribution
+# freqs = np.random.normal(0,1,N) # Gaussian with 0 mean (co-rotating frame)
+freqs = np.array([-5,5]) # Specific for N=2
 
-# Coupling and Temperature parameters
+## Coupling and Temperature parameters
 K = 10
-T = 0
+T = 0.8
 
-# System initialization
 system = Integrator(init_phi, freqs, K, T)
 
-# INTEGRATION
+iterations = 10000
 
-iterations = 1000
-
-# Instead of Dt itself the resolution with wich to integrate one period is chosen
-# The smaller period is taken as a reference
-time_resolution = 100 # Number of steps used to integrate over a period
+## Instead of Dt itself the resolution with wich to integrate one period is
+## chosen (the smaller period is taken as a reference).
+## !! BEWARE !! 
+## psi should be constant during the integration. The quality of the 
+## integration can be assessed in a first approximation looking at this 
+time_resolution = 1000 # Number of steps used to integrate over a period
 higher_freq = np.abs(freqs.max())
 Dt = 1/(time_resolution*higher_freq)
 
 phi, r, psi = system.integrate(Dt, iterations, 'heun', 7264)
 
-plt.plot(phi, 'r.')
-# plt.plot(psi, 'k.')
-# plt.plot(r, 'b')
-# plt.show()
+## TODO
+## x axis must show the length in pi units that's fundamental
+## I have to understand if the behaviour is numerical (artifact) or real 
+## To understand this, I could trust the model that preserves psi. That one
+## tells the truth.
+## If the pattern of r falling to 0 and recovering is true, then I can compute
+## the average length before this to happen. If I'm good enough in math...
+## And that could be an observable quantity and a prediction
+## That would make me a nice guy I do believe
+
+# fig, ax = plt.subplots()
+# ax.
+# plt.plot(phi, 'r-')
+# ax.plot(phi[:,1], 'b-', alpha=.8)
+# ax.plot(psi, 'k.')
+# ax.plot(r, 'k')
+plt.show()
 
 #%%
 
-# BIFURCATION COMPUTATION
+## BIFURCATION COMPUTATION
 
 # Instead of Dt itself the resolution with wich to integrate one period is chosen
 # The smaller period is taken as a reference
@@ -227,9 +256,7 @@ for (T, color) in zip([0,0.1,0.2,0.5],['k','b','g','r']):
 
 plt.show()
 
-#%%
-
-# BIFURCATION PLOT
+## BIFURCATION PLOT
 
 color='k'
 
@@ -245,11 +272,11 @@ plt.show()
 fig = plt.figure()
 ax = fig.add_subplot(projection='polar')
 
-#ax.plot(phi[:,0], speed[:,0], 'r')
-#ax.plot(phi[:,1], speed[:,1], 'b')
-#ax.plot(phi[:,9], speed[:,9], 'k')
+ax.plot(psi, r, 'k')
+ax.plot(psi[0], r[0], 'ro')   # Dot = Start   * --> o
+ax.plot(psi[-1], r[-1], 'r*') # Star = End    * --> o
 
-ax.plot(psi, r, 'r')
+plt.show()
 
 #%%
 
@@ -276,10 +303,7 @@ anim = animation.FuncAnimation(fig, animate,
 anim.save("name.gif", fps=30)
 
 
-
-
-
-
+#%%
 
 
 
