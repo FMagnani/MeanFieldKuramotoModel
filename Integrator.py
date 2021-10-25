@@ -9,6 +9,7 @@ GitHub: https://github.com/FMagnani
 
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.ticker as tck
 
 #%%
 
@@ -20,6 +21,7 @@ class Integrator():
         if not (len(init_distribution) == len(frequencies)):
             raise ValueError("init_distribution and frequencies should have same length")
         
+        self.N = np.array(init_distribution).shape[0]
         self.phi = np.array(init_distribution)
         self.freqs = np.array(frequencies)
         self.T = temperature
@@ -28,7 +30,8 @@ class Integrator():
         
         self.scheme_dict = {
                             'euler': self.Euler,
-                            'heun' : self.Heun
+                            'heun': self.Heun,
+                            'taylor': self.Taylor
                             }
         
         
@@ -86,14 +89,31 @@ class Integrator():
     
         # The square brackets inside are needed
         phi_history = np.array([self.phi])
-         
-        # For each oscillator, the whole Wiener process must be created
-        # In total, we have N random walks each with length = "iterations" 
-        wiener = np.random.normal(0, np.sqrt(Dt), (N,iterations))
+
+        N = self.N
+
+
+        ## TODO 
+        ## Update the following description
         
-        for i in range(iterations):
+        ## The noise realizations must be created for all the iterations 
+        ## before the loop. If we create a single one at each loop iteration,
+        ## since the seed has been chosen, they will be all equal.
+        ## Furthermore, some schemes as the Taylor scheme needs two random
+        ## variables correlated. They are created via a multivariate gaussian
+        ## distribution. 
+        ## Later in the scheme function, Euler and Heun methods will employ
+        ## only the Wiener part (the firs of the two correlated variables)
+        ## while Taylor both.
+        
+        means = [0,0]
+        covs = [[np.sqrt(Dt),     0.5*(Dt**2)],
+                [0.5*(Dt**2),     (Dt**3)/3  ]]
+        noise_vars = [np.random.multivariate_normal(means, covs, N) for i in range(iterations)]
             
-            noise = wiener[:, i]
+        for i in range(iterations):
+
+            noise = noise_vars[i]
             
             self.phi = scheme(Dt, noise)
             
@@ -103,23 +123,10 @@ class Integrator():
             r, psi = self.get_orderPars()
             coherence_history = np.append(coherence_history, r)
             psi_history = np.append(psi_history, psi)
-      
-         # TODO
-         # Understand the effects of 2pi modulation. I think it's different
-         # for example think to a very fast oscillator and a very slow.
-         # Without modulation, these two particles can get further and further
-         # away, one from the other. With modulation, they can be at most 
-         # far by pi. Do this affects the sinusoidal forcing between them?
-         # Or maybe not since the sinusoid is inherently periodic in 2pi?
-         #
-         # This affects also the "speed" method that computes the distances. 
-         # Correct it if needed.
          
-         # A quick test showed that it doesn't affect r actually
-         
-        phi_history = np.mod(phi_history, 2*np.pi)
-        coherence_history = np.mod(coherence_history, 2*np.pi)
-        psi_history = np.mod(psi_history, 2*np.pi)
+        # phi_history = np.mod(phi_history, 2*np.pi)
+        # coherence_history = np.mod(coherence_history, 2*np.pi)
+        # psi_history = np.mod(psi_history, 2*np.pi)
         
         return phi_history, coherence_history, psi_history
 
@@ -144,15 +151,25 @@ class Integrator():
 
     
     def Euler(self, Dt, noise):
-    
+        
+        # Noise comes with Wiener part + first order. 
+        # Only Wiener part is used here.
+        # noise is a vector with a different perturbation for each oscillator.
+        noise = noise[:,0]
+        
         speed = self.speed(self.phi)
-    
+        
         new_phi = self.phi + Dt*speed + self.T*noise
         
         return new_phi
 
 
     def Heun(self, Dt, noise):
+
+        # Noise comes with Wiener part + first order. 
+        # Only Wiener part is used here.
+        # noise is a vector with a different perturbation for each oscillator.
+        noise = noise[:,0]
         
         middle_pnt = self.Euler(Dt, noise)
         
@@ -163,54 +180,102 @@ class Integrator():
         
         return new_phi
         
-    ## TODO
-    ## Taylor method pls
-    ## I think that's a very noice integrator, this means less iterations.
-    ## Less iterations means less time. Or equal iteration but with no
-    ## fear to be wrong and have to re-do all from the start.
-    ##
     
+    ## TODO
+    ## Assess if Taylor method is right
+    
+    def speed_prime(self, phi):
+        
+        # Compute all combinations between phi's entries
+        xx, yy = np.meshgrid(phi,phi)        
+    
+        # Apply all pairwise differences in parallel
+        distances = xx - yy
+    
+        # Apply sine to all the differences in parallel
+        cosines = np.cos(distances)
+                
+        # Forcing term
+        forcings = -self.k*np.mean(cosines, axis=1)
+    
+        return forcings    
+    
+    
+    def Taylor(self, Dt, noise):
+        
+        noise = np.array(noise)
+        
+        DW = noise[:,0]
+        DZ = noise[:,1]
+
+        f = self.speed(self.phi)
+        f_prime = self.speed_prime(self.phi)
+        
+        new_phi = self.phi + f*Dt + self.T*DW +\
+                  0.5*Dt*Dt*f*( f_prime + 0.5*T*T ) +\
+                  T*f_prime*DZ
+
+        return new_phi
+
 
 #%%
 
 ### SCRIPT EXAMPLE
 
 ## Number of oscillators
-N = 2
+N = 10
 
 ## Random seed (for the Wiener processes) 
 np.random.seed(123)
 
 ## Initial phases distribution
-# init_phi = np.arange(0,2*np.pi,1/N) # Uniform
+#init_phi = np.linspace(0,2*np.pi,N) # Uniform
 init_phi = np.random.normal(np.pi, 1, N) # Gaussian around pi
 
 ## Natural frequencies distribution
-# freqs = np.random.normal(0,1,N) # Gaussian with 0 mean (co-rotating frame)
-freqs = np.array([-5,5]) # Specific for N=2
+freqs = np.random.normal(0,1,N) # Gaussian with 0 mean (co-rotating frame)
+#freqs = np.array([-5,5]) # Specific for N=2
+
+# Actual co-rotating reference frame, since for small N real mean is not 0
+freqs -= freqs.mean()
 
 ## Coupling and Temperature parameters
-K = 10
-T = 0.8
+K = 2.5
+T = 0.5
 
 system = Integrator(init_phi, freqs, K, T)
 
-iterations = 10000
+iterations = 5000
 
 ## Instead of Dt itself the resolution with wich to integrate one period is
 ## chosen (the smaller period is taken as a reference).
 ## !! BEWARE !! 
 ## psi should be constant during the integration. The quality of the 
 ## integration can be assessed in a first approximation looking at this 
-time_resolution = 1000 # Number of steps used to integrate over a period
+time_resolution = 100 # Number of steps used to integrate over a period
 higher_freq = np.abs(freqs.max())
 Dt = 1/(time_resolution*higher_freq)
 
 phi, r, psi = system.integrate(Dt, iterations, 'heun', 7264)
 
+
+modulation = 0
+## Modulation of angular variables
+if modulation:
+    phi = np.mod(phi, 2*np.pi)  
+    r = np.mod(r, 2*np.pi)
+    psi = np.mod(psi, 2*np.pi)
+    phi /= np.pi
+    psi /= np.pi
+    
+#%%
+
+## PLOTTING
+
+time_axis = Dt*range(iterations+1)
+
 ## TODO
-## x axis must show the length in pi units that's fundamental
-## I have to understand if the behaviour is numerical (artifact) or real 
+## Understand if the behaviour is numerical (artifact) or real 
 ## To understand this, I could trust the model that preserves psi. That one
 ## tells the truth.
 ## If the pattern of r falling to 0 and recovering is true, then I can compute
@@ -218,52 +283,57 @@ phi, r, psi = system.integrate(Dt, iterations, 'heun', 7264)
 ## And that could be an observable quantity and a prediction
 ## That would make me a nice guy I do believe
 
-# fig, ax = plt.subplots()
-# ax.
-# plt.plot(phi, 'r-')
-# ax.plot(phi[:,1], 'b-', alpha=.8)
-# ax.plot(psi, 'k.')
-# ax.plot(r, 'k')
+fig, (ax1,ax2) = plt.subplots(2,1)
+if modulation:
+    ax1.yaxis.set_major_formatter(tck.FormatStrFormatter('%g $\pi$'))
+    ax1.yaxis.set_major_locator(tck.MultipleLocator(base=.5))
+# ax1.scatter(time_axis,phi[:,0], marker='o', c='violet', s=2)
+# ax1.scatter(time_axis,phi[:,1], marker='o', c='indigo', s=2)
+ax1.plot(time_axis, phi, linewidth=1)
+ax2.plot(time_axis, r, 'k')
+
 plt.show()
 
 #%%
 
-## BIFURCATION COMPUTATION
+## Taylor method vs Heun method
 
-# Instead of Dt itself the resolution with wich to integrate one period is chosen
-# The smaller period is taken as a reference
+## The exact trajectories are different. The amplitude of the fluctuations
+## are the same. I think that these methods are to be compared in the mean
+## for many noise realizations.
+## NB the same noise realization has been used in the two methods, but the 
+## schemes are different. Moreover, Taylor method employs two correlated
+## random variables, not only a random walk. 
+
+temperatures = [0,0.2,0.5,1]
+
+iterations = 1000
+
 time_resolution = 100 # Number of steps used to integrate over a period
 higher_freq = np.abs(freqs.max())
 Dt = 1/(time_resolution*higher_freq)
 
-for (T, color) in zip([0,0.1,0.2,0.5],['k','b','g','r']):
+time_axis = Dt*range(iterations+1)
+
+for T in temperatures:
+   
+    system = Integrator(init_phi, freqs, K, T)
+    phi_h, r_h, _ = system.integrate(Dt, iterations, 'heun', 7264)
     
-    rk_relation = np.array([[0,0]])
+    system = Integrator(init_phi, freqs, K, T)
+    phi_t, r_t, _ = system.integrate(Dt, iterations, 'taylor', 7264)
     
-    for k in np.arange(0,12, 0.4):
+    fig, (ax1,ax2) = plt.subplots(2,1)
+    ax1.plot(time_axis, phi_h, linewidth=1)
+    ax2.plot(time_axis, phi_t, linewidth=1)
+
+    fig.show()
     
-        system = Integrator(init_phi, freqs, k, T)
-
-        iterations = 400
-
-        _, r, _ = system.integrate(Dt, iterations, 'heun', 7264)
+    fig, (ax1,ax2) = plt.subplots(2,1)
+    ax1.plot(time_axis, r_h, 'k')
+    ax2.plot(time_axis, r_t, 'k')
     
-        rk_relation = np.append(rk_relation, [[k,np.mean(r[-50:])]], axis=0)
-
-    rk_relation = rk_relation[1:,:]
-
-    plt.plot(rk_relation[:,0], rk_relation[:,1], '-', color=color, marker='*')
-
-plt.show()
-
-## BIFURCATION PLOT
-
-color='k'
-
-plt.plot(rk_relation[:,0], rk_relation[:,1], '-', color=color, marker='*')
-
-plt.show()
-
+    fig.show()
 
 #%%
 
