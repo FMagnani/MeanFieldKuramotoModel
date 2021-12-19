@@ -1,6 +1,6 @@
 # The mean field Kuramoto model
 
-The Kuramoto model (by Yoshiki :japanese_ogre: Kuramoto :japanese_goblin:) describes a large population of coupled limit-cycle oscillators, each with its natural frequency. If the coupling strength exceeds a 
+The Kuramoto model (by Yoshiki Kuramoto) describes a large population of coupled limit-cycle oscillators, each with its natural frequency. If the coupling strength exceeds a 
 certain threshold, the system exhibits a phase transition: some of the oscillators spontaneously synchronize, while others remain incoherent. Due to this 
 emergent property, this model and its numerous variations are the main paradigm for synchronization phenomena. The model has been introduced back in 1975 but 
 still today it proves to be an useful and surprising mathematical challenge, that keeps stimulating new advancements in the field.
@@ -9,7 +9,7 @@ still today it proves to be an useful and surprising mathematical challenge, tha
 The goverining system of equations of the model is the following:  
 <a href="https://www.codecogs.com/eqnedit.php?latex=\bg_white&space;\dot{\phi_i}&space;=&space;\omega_i&space;&plus;&space;\frac{K}{N}&space;\sum_{j=1}^N&space;\sin(\phi_j&space;-&space;\phi_i)" target="_blank"><img src="https://latex.codecogs.com/gif.latex?\bg_white&space;\dot{\phi_i}&space;=&space;\omega_i&space;&plus;&space;\frac{K}{N}&space;\sum_{j=1}^N&space;\sin(\phi_j&space;-&space;\phi_i)" title="\dot{\phi_i} = \omega_i + \frac{K}{N} \sum_{j=1}^N \sin(\phi_j - \phi_i)" /></a>
 
-A lot of further informations can be found in the report available in the repository.
+A lot of further informations can be found [in the report available in the repository](https://github.com/FMagnani/MeanFieldKuramotoModel/blob/main/Kuramoto_Model__Introduction.pdf).
 
 ### Connections to complexity
 The main feature of the model is the emergence of synchronization, what is called an **emergent property** in the field of **complex systems**. Being also a paradigmatic 
